@@ -1,51 +1,43 @@
+#define SENSOR_PIN 1
 #define LCD_PIN 3
 #define LED_PIN 4
 
-#define BUFSIZE 128
 #define JITTER_THRESHOLD 10
-#define ABS_RISING_THRESHOLD 102
-#define STATE_DURATION 100
+#define ABS_RISING_THRESHOLD 25
 #define BLACKOUT_MS 500
-#define HZ_MIN 5
+#define HZ_MIN 3
 #define DELAY 10
 
+int curDiff;
 int sensorValue;
-uint16_t prevValue = 0;
-size_t lastRead = 0;
+int prevValue = 0;
+bool isRising = false;
+size_t timer;
+size_t nextRead = 0;
 size_t lastRisingTime = 0;
 size_t blockingTime = 0;
-bool isRising = false;
-uint16_t absRising = 0;
-uint16_t risingTimeoutMin = 1000 / HZ_MIN;
+size_t absRising = 0;
+uint16_t risingTimeoutMin = 2000 / HZ_MIN;
 
-void setBlackout(size_t* timer)
-{
-  blockingTime = *timer + BLACKOUT_MS;
-}
-
-void testBlackout(size_t* timer)
-{
-  if (blockingTime > *timer) {
-    //Serial.println("BLACKOUT");
+void testBlackout(size_t timer) {
+  if (blockingTime > timer) {
     digitalWrite(LCD_PIN, HIGH);
   } else {
     digitalWrite(LCD_PIN, LOW);
   }
 }
 
-void setState(int value, size_t* timer)
-{
+void setState(int value, size_t timer) {
   if (value > 0) {
     absRising += abs(value);
-    //Serial.println(absRising);
     if (absRising > ABS_RISING_THRESHOLD && !isRising) {
-      isRising = true;
+      isRising = true;2
       //Serial.println("RISE");
       digitalWrite(LED_PIN, HIGH);
-      if (*timer - lastRisingTime < risingTimeoutMin) {
-        setBlackout(timer);
+      if (risingTimeoutMin > timer - lastRisingTime) {
+        blockingTime = timer + BLACKOUT_MS;
       }
-      lastRisingTime = *timer;
+      lastRisingTime = timer;
     }
   } else {
     absRising = 0;
@@ -54,57 +46,33 @@ void setState(int value, size_t* timer)
   }
 }
 
-void bootCheck()
-{
-  digitalWrite(LED_PIN, HIGH);
-  delay(333);
+void bootNotify(){
+  for (short i = 0; i < 5; i++) {
+    digitalWrite(LCD_PIN, i%2);
+    digitalWrite(LED_PIN, !i%2);
+    delay(20);
+  }
   digitalWrite(LED_PIN, LOW);
-  delay(333);
-  digitalWrite(LED_PIN, HIGH);
-  delay(333);
-  digitalWrite(LED_PIN, LOW);
-  delay(333);
-  digitalWrite(LED_PIN, HIGH);
-  delay(333);
-  digitalWrite(LED_PIN, LOW);
-  delay(333);
-  digitalWrite(LCD_PIN, HIGH);
-  delay(333);
   digitalWrite(LCD_PIN, LOW);
-  delay(333);
-  digitalWrite(LCD_PIN, HIGH);
-  delay(333);
-  digitalWrite(LCD_PIN, LOW);
-  delay(333);
-  digitalWrite(LCD_PIN, HIGH);
-  delay(333);
-  digitalWrite(LCD_PIN, LOW);
-  delay(333);
 }
 
 void setup() {
-  //Serial.begin(115200);
-  pinMode(2, INPUT);
   pinMode(LCD_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
-  bootCheck();
-  //Serial.println("Initialized!");
+  pinMode(SENSOR_PIN, INPUT);
+  bootNotify();
 }
 
 void loop() {
-  size_t timer = millis();
-  if (lastRead + DELAY <= timer) {
-    sensorValue = analogRead(1);
-    //Serial.println(sensorValue);
-    int curDiff = prevValue - sensorValue;
+  timer = millis();
+  if (nextRead <= timer) {
+    sensorValue = analogRead(SENSOR_PIN);
+    curDiff = prevValue - sensorValue;
     if (abs(curDiff) > JITTER_THRESHOLD) {
-      setState(curDiff, &timer);
+      setState(curDiff, timer);
     }
-    testBlackout(&timer);
     prevValue = sensorValue;
-    lastRead = timer;
-    delay(max(0, millis() - timer));
+    nextRead = timer + DELAY;
   }
-    
+  testBlackout(timer); 
 }
-
